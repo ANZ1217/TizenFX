@@ -18,6 +18,7 @@
 extern alias TizenSystemSettings;
 using TizenSystemSettings.Tizen.System;
 using System;
+using System.Text;
 using System.ComponentModel;
 using System.Collections.Generic;
 using Tizen.NUI.Text;
@@ -1102,7 +1103,7 @@ namespace Tizen.NUI.BaseComponents
             var fontList = new List<FontInfo>();
             if (fontArray != null)
             {
-                for (uint i = 0 ; i < fontArray.Count(); i ++)
+                for (uint i = 0; i < fontArray.Count(); i++)
                 {
                     using (var fontInfoMap = new PropertyMap())
                     using (var propertyValue = fontArray[i])
@@ -1147,7 +1148,7 @@ namespace Tizen.NUI.BaseComponents
 
                 if (pointSizeArray != null && minLineSizeArray != null && pointSizeArray.Count() == minLineSizeArray.Count())
                 {
-                    for (uint i = 0 ; i < pointSizeArray.Count() ; i ++)
+                    for (uint i = 0; i < pointSizeArray.Count(); i++)
                     {
                         using (var pointSizeValue = pointSizeArray[i])
                         using (var minLineSizeValue = minLineSizeArray[i])
@@ -1331,5 +1332,133 @@ namespace Tizen.NUI.BaseComponents
             if (NDalicPINVOKE.SWIGPendingException.Pending) throw NDalicPINVOKE.SWIGPendingException.Retrieve();
         }
 
+        public static string ParseMarkdownToDaliMarkup(string input)
+        {
+            var output = new StringBuilder();
+            var stack = new Stack<(string marker, int pos)>();
+            int i = 0;
+
+            while (i < input.Length)
+            {
+                // bold+italic (*** or ___)
+                if (i + 2 < input.Length &&
+                ((input[i] == '*' && input[i + 1] == '*' && input[i + 2] == '*') || (input[i] == '_' && input[i + 1] == '_' && input[i + 2] == '_')))
+                {
+                    string marker = input.Substring(i, 3);
+                    bool valid = true;
+                    if (marker == "___")
+                    {
+                        if (i > 0 && (stack.Count == 0 || stack.Peek().marker != marker) && Char.IsLetterOrDigit(input[i - 1]))
+                        {
+                            valid = false;
+                        }
+                        if (i + 3 < input.Length && (stack.Count > 0 && stack.Peek().marker == marker) && Char.IsLetterOrDigit(input[i + 3]))
+                        {
+                            valid = false;
+                        }
+                    }
+
+                    if (valid)
+                    {
+                        HandleMarker(stack, output, marker, "<b><i>", "</i></b>");
+                        i += 3;
+                        continue;
+                    }
+                    else
+                    {
+                        i += 3;
+                        output.Append(marker);
+                        continue;
+                    }
+                }
+
+                // bold (** or __)
+                if (i + 1 < input.Length &&
+                ((input[i] == '*' && input[i + 1] == '*') || (input[i] == '_' && input[i + 1] == '_')))
+                {
+                    string marker = input.Substring(i, 2);
+                    bool valid = true;
+                    if (marker == "__")
+                    {
+                        if (i > 0 && (stack.Count == 0 || stack.Peek().marker != marker) && Char.IsLetterOrDigit(input[i - 1]))
+                        {
+                            valid = false;
+                        }
+                        if (i + 2 < input.Length && (stack.Count > 0 && stack.Peek().marker == marker) && Char.IsLetterOrDigit(input[i + 2]))
+                        {
+                            valid = false;
+                        }
+                    }
+
+                    if (valid)
+                    {
+                        HandleMarker(stack, output, marker, "<b>", "</b>");
+                        i += 2;
+                        continue;
+                    }
+                    else
+                    {
+                        i += 2;
+                        output.Append(marker);
+                        continue;
+                    }
+                }
+
+                // italic (* or _)
+                else if (input[i] == '*' || input[i] == '_')
+                {
+                    string marker = input[i].ToString();
+                    bool valid = true;
+                    if (marker == "_")
+                    {
+                        if (i > 0 && (stack.Count == 0 || stack.Peek().marker != marker) && Char.IsLetterOrDigit(input[i - 1]))
+                        {
+                            valid = false;
+                        }
+                        if (i + 1 < input.Length && (stack.Count > 0 && stack.Peek().marker == marker) && Char.IsLetterOrDigit(input[i + 1]))
+                        {
+                            valid = false;
+                        }
+                    }
+
+                    if (valid)
+                    {
+                        HandleMarker(stack, output, marker, "<i>", "</i>");
+                        i += 1;
+                        continue;
+                    }
+                }
+
+                // strikethrough (~~)
+                else if (i + 1 < input.Length &&
+                ((input[i] == '~' && input[i + 1] == '~')))
+                {
+                    string marker = input.Substring(i, 2);
+                    HandleMarker(stack, output, marker, "<s>", "</s>");
+                    i += 2;
+                    continue;
+                }
+
+                output.Append(input[i]);
+                i += 1;
+            }
+
+            return output.ToString();
+        }
+
+        private static void HandleMarker(Stack<(string marker, int pos)> stack, StringBuilder output, string marker, string openTag, string closeTag)
+        {
+            if (stack.Count > 0 && stack.Peek().marker == marker)
+            {
+                var (_, startPos) = stack.Pop();
+                string content = output.ToString(startPos, output.Length - startPos);
+                output.Remove(startPos, output.Length - startPos);
+                output.Append(openTag).Append(content).Append(closeTag);
+            }
+            else
+            {
+                stack.Push((marker, output.Length));
+            }
+        }
     }
 }
